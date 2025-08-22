@@ -6,15 +6,18 @@
   <title>Call Tracker</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
+    
+    
     body {
       font-family: Arial, sans-serif;
-      background-color: gradient(to right, #b7cdf9, #006c86);
+      background: linear-gradient(to right, #b7cdf9, #006c86);
       display: flex;
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
       margin: 0;
       padding: 20px;
+      color: #222;
     }
     .container {
       width: 100%;
@@ -67,6 +70,7 @@
       padding: 12px 20px;
     }
     .export:hover { background: #15803d; }
+
     /* Category colors */
     .fresh { border-top: 4px solid #2563eb; }
     .positive { border-top: 4px solid #16a34a; }
@@ -75,6 +79,67 @@
     .followup { border-top: 4px solid #0891b2; }
     .followup-positive { border-top: 4px solid #22c55e; }
     .followup-not { border-top: 4px solid #b91c1c; }
+
+    /* Summary Table */
+    .summary {
+      margin-top: 40px;
+      width: 100%;
+      max-width: 1000px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+      font-size: 14px;
+    }
+    th {
+      background: #4f46e5;
+      color: white;
+    }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .dialog-box {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    width: 280px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    padding: 15px;
+    font-family: monospace;
+    font-size: 14px;
+    white-space: pre-line;
+    z-index: 1000;
+  }
+  .dialog-box h3 {
+    margin: 0 0 10px;
+    font-size: 16px;
+    color: #4f46e5;
+    text-align: center;
+  }
+  .copy-btn {
+    background: #16a34a;
+    margin-top: 10px;
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    color: #fff;
+    font-size: 14px;
+  }
+  .copy-btn:hover {
+    background: #15803d;
+  }
   </style>
 </head>
 <body>
@@ -132,6 +197,31 @@
       <button class="minus" onclick="decrement('followupNot')">- Minus</button>
     </div>
   </div>
+    <div class="dialog-box">
+      <h3>📋 Current Update</h3>
+      <div id="dialogContent"></div>
+        <button class="copy-btn" onclick="copyDialog()">Copy</button>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="summary">
+    <h2>📊 Last 7 Days Summary</h2>
+    <table id="summaryTable">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Fresh Calls</th>
+          <th>Positives</th>
+          <th>Neutrals</th>
+          <th>Not Interested</th>
+          <th>Follow-ups</th>
+          <th>Follow-up Positives</th>
+          <th>Follow-up Not Interested</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
   <script>
     const categories = ["fresh","positive","neutral","not","followup","followupPositive","followupNot"];
@@ -145,12 +235,15 @@
       followupNot: "Follow-up Not Interested"
     };
 
-    // Load saved data
+    // Load data on page load
     window.onload = () => {
+      checkNewDay(); // auto-save for new day
       categories.forEach(cat => {
         let saved = localStorage.getItem(cat) || 0;
         document.getElementById(cat).innerText = saved;
       });
+      loadSummary();
+      scheduleMidnightSave();
     };
 
     function increment(category) {
@@ -158,6 +251,7 @@
       count++;
       localStorage.setItem(category, count);
       document.getElementById(category).innerText = count;
+      saveSummary();
     }
 
     function decrement(category) {
@@ -165,6 +259,7 @@
       if (count > 0) count--;
       localStorage.setItem(category, count);
       document.getElementById(category).innerText = count;
+      saveSummary();
     }
 
     function resetAll() {
@@ -173,27 +268,157 @@
           localStorage.setItem(cat, 0);
           document.getElementById(cat).innerText = 0;
         });
+        saveSummary();
       }
     }
 
-    function exportToExcel() {
+    function saveSummary() {
       const today = new Date().toLocaleDateString();
-      let data = [["Date", ...categories.map(c => labels[c])]]; // Header row
-      let row = [today];
+      let summary = JSON.parse(localStorage.getItem("summary") || "[]");
 
-      categories.forEach(cat => {
-        let val = localStorage.getItem(cat) || 0;
-        row.push(val);
+      let existing = summary.find(row => row.date === today);
+      if (!existing) {
+        existing = { date: today };
+        categories.forEach(c => existing[c] = 0);
+        summary.push(existing);
+      }
+
+      categories.forEach(c => {
+        existing[c] = parseInt(localStorage.getItem(c) || 0);
       });
 
-      data.push(row);
+      // Keep only last 7 days
+      if (summary.length > 7) {
+        summary = summary.slice(summary.length - 7);
+      }
+
+      localStorage.setItem("summary", JSON.stringify(summary));
+      localStorage.setItem("lastSavedDate", today);
+      loadSummary();
+    }
+
+    function loadSummary() {
+      let summary = JSON.parse(localStorage.getItem("summary") || "[]");
+      let tbody = document.getElementById("summaryTable").querySelector("tbody");
+      tbody.innerHTML = "";
+      summary.forEach(row => {
+        let tr = "<tr><td>"+row.date+"</td>";
+        categories.forEach(c => {
+          tr += "<td>"+(row[c] || 0)+"</td>";
+        });
+        tr += "</tr>";
+        tbody.innerHTML += tr;
+      });
+    }
+
+    function checkNewDay() {
+      const today = new Date().toLocaleDateString();
+      const lastSavedDate = localStorage.getItem("lastSavedDate");
+
+      if (lastSavedDate !== today) {
+        // Save yesterday's summary before reset
+        saveSummary();
+
+        // Reset counters for new day
+        categories.forEach(cat => {
+          localStorage.setItem(cat, 0);
+          document.getElementById(cat).innerText = 0;
+        });
+
+        saveSummary(); // Create new row for today
+      }
+    }
+
+    function scheduleMidnightSave() {
+      const now = new Date();
+      const millisTillMidnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        0, 0, 0, 0
+      ) - now;
+
+      setTimeout(() => {
+        checkNewDay();
+        scheduleMidnightSave(); // reschedule for next midnight
+      }, millisTillMidnight);
+    }
+
+    function exportToExcel() {
+      let summary = JSON.parse(localStorage.getItem("summary") || "[]");
+      let data = [["Date", ...categories.map(c => labels[c])]];
+      summary.forEach(row => {
+        let r = [row.date];
+        categories.forEach(c => r.push(row[c] || 0));
+        data.push(r);
+      });
 
       let ws = XLSX.utils.aoa_to_sheet(data);
       let wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Call Report");
-
       XLSX.writeFile(wb, "Call_Report.xlsx");
     }
+    function updateDialog() {
+  let output = "";
+  output += `fresh: "${localStorage.getItem("fresh") || 0}",\n`;
+  output += `positive: "${localStorage.getItem("positive") || 0}",\n`;
+  output += `neutral: "${localStorage.getItem("neutral") || 0}",\n`;
+  output += `not: "${localStorage.getItem("not") || 0}",\n`;
+  output += `followup: "${localStorage.getItem("followup") || 0}",\n`;
+  output += `followupPositive: "${localStorage.getItem("followupPositive") || 0}",\n`;
+  output += `followupNot: "${localStorage.getItem("followupNot") || 0}"`;
+  
+  document.getElementById("dialogContent").innerText = output;
+}
+
+function copyDialog() {
+  const text = document.getElementById("dialogContent").innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    alert("Copied to clipboard ✅");
+  });
+}
+
+// Call updateDialog whenever data changes
+function increment(category) {
+  let count = parseInt(localStorage.getItem(category) || 0);
+  count++;
+  localStorage.setItem(category, count);
+  document.getElementById(category).innerText = count;
+  saveSummary();
+  updateDialog();
+}
+
+function decrement(category) {
+  let count = parseInt(localStorage.getItem(category) || 0);
+  if (count > 0) count--;
+  localStorage.setItem(category, count);
+  document.getElementById(category).innerText = count;
+  saveSummary();
+  updateDialog();
+}
+
+function resetAll() {
+  if (confirm("Are you sure you want to reset all counts?")) {
+    categories.forEach(cat => {
+      localStorage.setItem(cat, 0);
+      document.getElementById(cat).innerText = 0;
+    });
+    saveSummary();
+    updateDialog();
+  }
+}
+
+// Update dialog on page load
+window.onload = () => {
+  checkNewDay();
+  categories.forEach(cat => {
+    let saved = localStorage.getItem(cat) || 0;
+    document.getElementById(cat).innerText = saved;
+  });
+  loadSummary();
+  scheduleMidnightSave();
+  updateDialog();
+};
   </script>
 </body>
 </html>
