@@ -360,13 +360,13 @@
     }
     function updateDialog() {
   let output = "";
-  output += `fresh: "${localStorage.getItem("fresh") || 0}",\n`;
-  output += `positive: "${localStorage.getItem("positive") || 0}",\n`;
-  output += `neutral: "${localStorage.getItem("neutral") || 0}",\n`;
-  output += `not: "${localStorage.getItem("not") || 0}",\n`;
-  output += `followup: "${localStorage.getItem("followup") || 0}",\n`;
-  output += `followupPositive: "${localStorage.getItem("followupPositive") || 0}",\n`;
-  output += `followupNot: "${localStorage.getItem("followupNot") || 0}"`;
+  output += `fresh calls: ${localStorage.getItem("fresh") || 0}\n`;
+  output += `positive: ${localStorage.getItem("positive") || 0}\n`;
+  output += `neutral: ${localStorage.getItem("neutral") || 0}\n`;
+  output += `not intrested: ${localStorage.getItem("not") || 0}\n`;
+  output += `follow up: ${localStorage.getItem("followup") || 0}\n`;
+  output += `follow up Positive: ${localStorage.getItem("followupPositive") || 0}\n`;
+  output += `follow up Not intrested: ${localStorage.getItem("followupNot") || 0}`;
   
   document.getElementById("dialogContent").innerText = output;
 }
